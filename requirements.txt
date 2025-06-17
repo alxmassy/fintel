@@ -6,6 +6,6 @@ scikit-learn
 xgboost
 shap
 python-dotenv
-# For the optional web API later
-fastapi
-uvicorn
+fastapi # Keep for reference, but not directly used by Streamlit app
+uvicorn # Keep for reference
+streamlit
