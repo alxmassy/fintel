@@ -282,7 +282,7 @@ st.sidebar.info(
     Fintel is a machine learning prototype that combines historical stock price data with recent news sentiment to forecast short-term stock movements.
     It uses an XGBoost classifier for prediction and SHAP (SHapley Additive exPlanations) for generating the advice.
 
-    **Developed by:** [Your Name/GitHub Link if you want]
+    **Developed by:** [Alex Massy]
     """
 )
 st.sidebar.text("Version: Prototype 1.0")
