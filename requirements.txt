@@ -1,0 +1,11 @@
+pandas
+yfinance
+requests
+nltk
+scikit-learn
+xgboost
+shap
+python-dotenv
+# For the optional web API later
+fastapi
+uvicorn
