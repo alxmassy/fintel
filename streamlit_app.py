@@ -25,9 +25,22 @@ except LookupError:
 
 # --- Replicate TARGET_MAPPING and generate_advice from predict_and_advise.py ---
 # You could put these in a separate 'utils.py' file in src/ for cleaner code
-TARGET_MAPPING = {1: "Up", -1: "Down", 0: "Neutral"}
+TARGET_MAPPING = {1: "Up", -1: "Down", 0: "Neutral", 2: "Up"}  # Add 2 -> "Up" mapping for XGBoost
 
 def generate_advice(prediction_direction, shap_values, feature_names, current_news_summary):
+    # Convert NumPy integer types to standard Python int
+    if isinstance(prediction_direction, (np.integer, np.int32, np.int64)):
+        prediction_direction = int(prediction_direction)
+    
+    # Handle unexpected prediction values
+    if prediction_direction not in TARGET_MAPPING:
+        # Map 2 -> 1 (Up), other unexpected values to 0 (Neutral)
+        if prediction_direction == 2:
+            prediction_direction = 1
+        else:
+            prediction_direction = 0
+        st.warning(f"Unexpected prediction value: {prediction_direction}. Using fallback.")
+    
     advice_text = f"Fintel predicts the stock will move: **{TARGET_MAPPING[prediction_direction]}**.\n\n"
 
     if not isinstance(shap_values, (np.ndarray, pd.Series, list)):
@@ -182,7 +195,26 @@ def get_prediction_and_advice(ticker_symbol="AAPL"):
 
     # 4. Make Prediction
     prediction_array = model.predict(X_new_scaled_df)
-    prediction_direction = prediction_array[0]
+    raw_prediction = prediction_array[0]
+    
+    # Check if we need to map the prediction from [0, 1, 2] back to [-1, 0, 1]
+    # Load the label mapping if available
+    try:
+        label_mapping = joblib.load('models/label_mapping.pkl')
+        # label_mapping is {0: -1, 1: 0, 2: 1} (XGBoost class index to original label)
+        prediction_direction = label_mapping.get(int(raw_prediction), 0)  # Default to 0 (Neutral) if mapping fails
+    except (FileNotFoundError, KeyError):
+        # If label mapping file doesn't exist or mapping fails, use simple heuristic
+        if isinstance(raw_prediction, (np.integer, np.int32, np.int64)):
+            raw_prediction = int(raw_prediction)
+        
+        # Map predictions based on likely patterns
+        if raw_prediction == 2:
+            prediction_direction = 1  # Map 2 to 1 (Up)
+        elif raw_prediction == 0:
+            prediction_direction = -1  # Map 0 to -1 (Down)
+        else:
+            prediction_direction = raw_prediction  # Keep as is
     
     # 5. Generate SHAP values for explanation
     explainer = shap.TreeExplainer(model)
@@ -219,7 +251,22 @@ def get_prediction_and_advice(ticker_symbol="AAPL"):
     # 6. Generate Advice
     advice = generate_advice(prediction_direction, shap_explanation_values, feature_names, current_news_summary)
 
-    return prediction_direction, advice, current_close_price, TARGET_MAPPING[prediction_direction]
+    # Ensure prediction_direction is a valid key in TARGET_MAPPING
+    if isinstance(prediction_direction, (np.integer, np.int32, np.int64)):
+        prediction_direction = int(prediction_direction)
+    
+    # Make sure we have a valid label
+    if prediction_direction not in TARGET_MAPPING:
+        # Handle unexpected prediction values
+        if prediction_direction == 2:
+            prediction_label = "Up"
+        else:
+            prediction_label = "Neutral"
+            prediction_direction = 0
+    else:
+        prediction_label = TARGET_MAPPING[prediction_direction]
+
+    return prediction_direction, advice, current_close_price, prediction_label
 
 
 # --- Streamlit GUI Layout ---
