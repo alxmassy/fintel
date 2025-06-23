@@ -2,9 +2,7 @@
 
 ## Overview
 
-Fintel is a proof-of-concept machine learning system designed to predict short-term stock price movements (Up, Down, or Neutral) for a single stock (Apple - AAPL) by leveraging both historical price data and recent news sentiment. Beyond just a prediction, Fintel aims to provide AI-driven "advice" that explains the rationale behind its forecast, primarily based on the most influential features identified by the model, including news sentiment.
-
-This project serves as a comprehensive demonstration of key Machine Learning (ML), Natural Language Processing (NLP), and MLOps (Machine Learning Operations) concepts, from data acquisition and feature engineering to model training, explainability, and a user-friendly web interface.
+Fintel is a proof-of-concept machine learning system designed to predict short-term stock price movements (Up, Down, or Neutral) by leveraging both historical price data and recent news sentiment.
 
 ## Features
 
@@ -30,7 +28,6 @@ This project serves as a comprehensive demonstration of key Machine Learning (ML
     *   When a prediction request is made, the system fetches the *latest* stock prices and news.
     *   These real-time inputs are transformed into features using the same preprocessing steps and the saved `StandardScaler`.
     *   The trained XGBoost model makes a prediction.
-    *   SHAP values are computed for this specific prediction to understand which features contributed most.
-    *   A custom logic then translates these influential features and the predicted direction into a concise, AI-driven advice message.
+    *   The SHAP advice model is currently being implemented.
 5.  **Web GUI**: Streamlit hosts an interactive interface that allows users to input a stock ticker (currently fixed to AAPL in the backend logic for this prototype) and view the prediction and advice.
 
