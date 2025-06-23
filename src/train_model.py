@@ -5,6 +5,7 @@ from xgboost import XGBClassifier
 import joblib # For saving/loading model and data
 import os
 import sys
+import shap
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -31,8 +32,19 @@ def train_xgboost_model(model_output_path="models/xgboost_model.pkl"):
     label_map = {-1: 0, 0: 1, 1: 2}
     
     # Apply mapping to train and test labels
-    y_train_mapped = y_train.map(label_map)
-    y_test_mapped = y_test.map(label_map)
+    if y_train is None or y_test is None:
+        print("y_train or y_test is None. Exiting training.")
+        return None
+
+    try:
+        y_train_mapped = y_train.map(label_map)
+        y_test_mapped = y_test.map(label_map)
+
+        if y_train_mapped.isnull().any() or y_test_mapped.isnull().any():
+            raise ValueError("Mapping failed for some values in y_train or y_test. Check label_map.")
+    except Exception as e:
+        print(f"Error mapping labels: {e}")
+        return None
     
     # Store the original mapping for prediction interpretation later
     original_labels = {v: k for k, v in label_map.items()}  # Reverse the mapping
@@ -79,6 +91,24 @@ def train_xgboost_model(model_output_path="models/xgboost_model.pkl"):
     # Save the original labels mapping for future predictions
     joblib.dump(original_labels, "models/label_mapping.pkl")
     print("Label mapping saved to models/label_mapping.pkl")
+
+    # Add SHAP explanation generation after model prediction
+    explainer = shap.Explainer(model, X_train_scaled)
+
+    # Generate SHAP values for the test set
+    shap_values = explainer(X_test_scaled)
+
+    # Create a function to generate textual insights based on SHAP values
+    def generate_insight(shap_values, feature_names):
+        insights = []
+        for i, shap_value in enumerate(shap_values):
+            top_features = sorted(zip(feature_names, shap_value.values), key=lambda x: abs(x[1]), reverse=True)[:3]
+            insight = f"Prediction influenced by: {', '.join([f'{feature} ({value:.2f})' for feature, value in top_features])}"
+            insights.append(insight)
+        return insights
+
+    # Generate insights for the test set
+    insights = generate_insight(shap_values, feature_names)
 
     print("--- Model Training Complete ---")
     return model

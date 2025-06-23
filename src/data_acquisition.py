@@ -8,45 +8,87 @@ import requests
 # Load environment variables from .env file
 load_dotenv()
 
-def get_apple_stock_data(period="3y", interval="1d", output_path="data/aapl_historical_prices.csv"):
+def get_stock_data(ticker="AAPL", period="3y", interval="1d", output_path=None):
     """
-    Downloads historical stock data for Apple (AAPL) using yfinance.
+    Downloads historical stock data using yfinance.
 
     Args:
+        ticker (str): Stock ticker symbol (e.g., "AAPL", "GOOGL")
         period (str): Valid periods: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
         interval (str): Valid intervals: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
-        output_path (str): Path to save the CSV file.
+        output_path (str): Path to save the CSV file. If None, will generate a path based on ticker.
     """
-    print(f"Fetching historical stock data for AAPL for the last {period}...")
+    if output_path is None:
+        # Ensure data directory exists
+        os.makedirs("data", exist_ok=True)
+        output_path = f"data/{ticker.lower()}_historical_prices.csv"
+        
+    print(f"Fetching historical stock data for {ticker} for the last {period}...")
     try:
-        ticker = yf.Ticker("AAPL")
-        df = ticker.history(period=period, interval=interval)
+        ticker_obj = yf.Ticker(ticker)
+        df = ticker_obj.history(period=period, interval=interval)
         
         if df.empty:
-            print("No stock data fetched. Check ticker or period.")
+            print(f"No stock data fetched for {ticker}. Check ticker or period.")
             return None
         
-        df.index = df.index.tz_localize(None) # Remove timezone for easier merging
+        # Ensure the index is a DatetimeIndex before removing timezone information
+        if isinstance(df.index, pd.DatetimeIndex):
+            df.index = df.index.tz_localize(None)
+        else:
+            print("Index is not a DatetimeIndex. Skipping timezone localization.")
+        
         df.to_csv(output_path)
-        print(f"AAPL historical stock data saved to {output_path}")
+        print(f"{ticker} historical stock data saved to {output_path}")
         print(df.head())
-        print(df.info())
         return df
     except Exception as e:
-        print(f"Error fetching stock data: {e}")
+        print(f"Error fetching stock data for {ticker}: {e}")
         return None
 
-def get_apple_news_data(query="Apple OR AAPL", lang="en", output_path="data/aapl_recent_news.csv", days_ago=30):
+def get_news_data(ticker="AAPL", days_ago=30, lang="en", output_path=None, strict_filtering=True):
     """
-    Fetches recent news articles for Apple using NewsAPI.org.
-    Note: Free tier usually limits to the last month.
-
+    Fetches recent news articles for a given stock ticker using NewsAPI.org.
+    
     Args:
-        query (str): Search query for news.
-        lang (str): Language of the news articles (e.g., 'en' for English).
-        output_path (str): Path to save the CSV file.
+        ticker (str): Stock ticker symbol (e.g., "AAPL", "GOOGL")
         days_ago (int): Number of days to look back for news (limited by NewsAPI free tier).
+        lang (str): Language of the news articles (e.g., 'en' for English).
+        output_path (str): Path to save the CSV file. If None, will generate a path based on ticker.
+        strict_filtering (bool): If True, applies additional filtering to ensure articles are directly related
+                                to the company.
     """
+    # Get company name based on ticker for better news search
+    company_names = {
+        "AAPL": "Apple",
+        "GOOGL": "Google OR Alphabet OR Android OR YouTube",  # Enhanced Google query
+        "MSFT": "Microsoft",
+        "AMZN": "Amazon",
+        "META": "Meta OR Facebook",
+        "TSLA": "Tesla",
+        "NVDA": "NVIDIA",
+    }
+    
+    company_name = company_names.get(ticker, ticker)
+    
+    # Build more precise query with company name in quotes for exact matches
+    # and include ticker symbol separately
+    query = f'"{company_name}" OR {ticker}'
+    
+    # Enhanced query for Google to include more product news
+    if ticker == "GOOGL":
+        # Build a more comprehensive query that includes products and controversies
+        query = f'"{company_name}" OR {ticker} OR "Google AI" OR "Google products" OR "Google Cloud" OR "Android" OR "Chrome" OR "YouTube"'
+        
+        # For Google, also try to include some news about regulations or controversies
+        # which typically have more negative sentiment for balance
+        query += ' OR "Google antitrust" OR "Google regulation" OR "Google lawsuit"'
+    
+    if output_path is None:
+        # Ensure data directory exists
+        os.makedirs("data", exist_ok=True)
+        output_path = f"data/{ticker.lower()}_recent_news.csv"
+    
     NEWS_API_KEY = os.getenv("NEWS_API_KEY")
     if not NEWS_API_KEY:
         print("NEWS_API_KEY not found in .env. Please set it up.")
@@ -86,31 +128,118 @@ def get_apple_news_data(query="Apple OR AAPL", lang="en", output_path="data/aapl
         news_df = news_df[['publishedAt', 'title', 'description', 'source', 'url']]
         news_df['publishedAt'] = pd.to_datetime(news_df['publishedAt'])
         
+        if strict_filtering and not news_df.empty:
+            print(f"Applying strict filtering for {ticker} news articles...")
+            
+            # Add a combined text field for searching
+            news_df['text'] = news_df['title'].fillna('') + ' ' + news_df['description'].fillna('')
+            
+            # Convert all text to lowercase for case-insensitive matching
+            news_df['text'] = news_df['text'].str.lower()
+            ticker_lower = ticker.lower()
+            
+            # Get company name variations for filtering
+            company_name_variations = []
+            if ticker in company_names:
+                # Extract company name and create variations
+                company_name = company_names[ticker].split(' OR ')[0]
+                company_name_variations = [company_name.lower()]
+                
+                # Add common variations like Inc., Corp., etc.
+                if ticker == "AAPL":
+                    company_name_variations.extend(['apple inc', 'iphone', 'ipad', 'mac', 'ios'])
+                elif ticker == "GOOGL":
+                    company_name_variations.extend([
+                        'google llc', 'alphabet inc', 'android', 'pixel', 'chrome', 
+                        'gmail', 'youtube', 'google cloud', 'waymo', 'deepmind',
+                        'google search', 'google maps', 'google assistant',
+                        'sundar pichai', 'bard', 'gemini', 'alphabet company'
+                    ])
+                elif ticker == "MSFT":
+                    company_name_variations.extend(['microsoft corp', 'windows', 'azure', 'xbox'])
+                elif ticker == "AMZN":
+                    company_name_variations.extend(['amazon.com', 'aws', 'prime', 'alexa'])
+                elif ticker == "META":
+                    company_name_variations.extend(['facebook', 'instagram', 'whatsapp', 'oculus', 'meta platforms'])
+                elif ticker == "TSLA":
+                    company_name_variations.extend(['tesla motors', 'elon musk', 'model s', 'model 3', 'model x', 'model y'])
+                elif ticker == "NVDA":
+                    company_name_variations.extend(['nvidia corp', 'geforce', 'cuda', 'gpu'])
+            
+            # Filter articles that clearly mention the ticker or company name
+            relevant_mask = news_df['text'].str.contains(ticker_lower)
+            for variation in company_name_variations:
+                relevant_mask |= news_df['text'].str.contains(variation)
+                
+            # Apply the filter
+            relevant_articles = news_df[relevant_mask]
+            
+            # If we have relevant articles, use those; otherwise fall back to original results
+            if not relevant_articles.empty:
+                filtered_count = len(news_df) - len(relevant_articles)
+                news_df = relevant_articles
+                print(f"Filtered out {filtered_count} irrelevant articles. Kept {len(news_df)} articles about {ticker}.")
+            else:
+                print(f"Strict filtering removed all articles. Using original results.")
+        
+        # Add special case for financial stock holding news to avoid overwhelming positive bias
+        if ticker == "GOOGL":
+            # For Google specifically, if we have a lot of stock holding news,
+            # limit them to a smaller percentage of the total articles
+            stock_holding_pattern = r'(shares|stake|position|holdings|acquires|cuts|trims|boosts|raises|lowers)'
+            stock_news_mask = news_df['text'].str.lower().str.contains(stock_holding_pattern, regex=True)
+            product_news_mask = ~stock_news_mask
+            
+            # Calculate how many stock news articles we have
+            stock_news_count = stock_news_mask.sum()
+            product_news_count = product_news_mask.sum()
+            total_news_count = len(news_df)
+            
+            # If more than 70% are stock holding news and we have at least 10 articles,
+            # balance the distribution to include more product/tech news
+            if stock_news_count > 10 and stock_news_count / total_news_count > 0.7:
+                # Keep all product news and a subset of stock news
+                target_stock_news = min(10, int(total_news_count * 0.5))
+                stock_news_to_keep = news_df[stock_news_mask].sample(n=target_stock_news) if stock_news_count > target_stock_news else news_df[stock_news_mask]
+                news_df = pd.concat([news_df[product_news_mask], stock_news_to_keep])
+                print(f"Balanced Google news: kept {len(news_df[product_news_mask])} product news and {len(stock_news_to_keep)} stock news articles")
+                
         news_df.to_csv(output_path, index=False)
-        print(f"AAPL recent news data saved to {output_path}")
+        print(f"{ticker} recent news data saved to {output_path}")
         print(news_df.head())
-        print(news_df.info())
         return news_df
     except requests.exceptions.RequestException as e:
         print(f"Error fetching news data: {e}")
-        if response and response.status_code == 429:
+        if hasattr(response, 'status_code') and response.status_code == 429:
             print("You might have hit the NewsAPI.org rate limit or free tier historical limit.")
         return None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return None
 
+# Keep backward compatibility
+def get_apple_stock_data(period="3y", interval="1d", output_path="data/aapl_historical_prices.csv"):
+    return get_stock_data(ticker="AAPL", period=period, interval=interval, output_path=output_path)
+
+def get_apple_news_data(query="Apple OR AAPL", lang="en", output_path="data/aapl_recent_news.csv", days_ago=30):
+    return get_news_data(ticker="AAPL", days_ago=days_ago, lang=lang, output_path=output_path)
+
 if __name__ == "__main__":
     # --- Fetch Stock Data ---
-    stock_df = get_apple_stock_data()
+    stock_df = get_stock_data("AAPL")
+    google_df = get_stock_data("GOOGL")
 
     # --- Fetch News Data ---
     # Note: Free NewsAPI.org accounts are limited to ~1 month of historical data.
-    # This will mainly fetch very recent news for the prototype.
-    news_df = get_apple_news_data()
+    news_df = get_news_data("AAPL")
+    google_news_df = get_news_data("GOOGL")
 
     print("\n--- Data Acquisition Complete ---")
     if stock_df is not None:
         print(f"Stock data shape: {stock_df.shape}")
+    if google_df is not None:
+        print(f"Google stock data shape: {google_df.shape}")
     if news_df is not None:
         print(f"News data shape: {news_df.shape}")
+    if google_news_df is not None:
+        print(f"Google news data shape: {google_news_df.shape}")

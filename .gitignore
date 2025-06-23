@@ -21,8 +21,6 @@ models/*.pkl
 *.csv                    # Catch any CSVs directly in the root (though data/ is preferred)
 *.pkl                    # Catch any PKL files directly in the root
 
-# Jupyter Notebook specific files
-.ipynb_checkpoints/      # Jupyter notebook checkpoints
 
 # Log files
 *.log

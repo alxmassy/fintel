@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import nltk
+from nltk import downloader
 from sklearn.preprocessing import StandardScaler
 import joblib # For saving/loading scaler
 import os
@@ -9,7 +10,7 @@ import os
 # Download VADER lexicon (do this once)
 try:
     nltk.data.find('sentiment/vader_lexicon.zip')
-except nltk.downloader.DownloadError:
+except LookupError:
     nltk.download('vader_lexicon')
 
 def create_features_and_target(stock_df_path="data/aapl_historical_prices.csv", 
@@ -65,7 +66,7 @@ def create_features_and_target(stock_df_path="data/aapl_historical_prices.csv",
 
     # Relative Strength Index (RSI) - Simplified calculation for prototype
     # Real RSI is more complex, consider 'ta' library for production: pip install ta
-    delta = stock_df['Close'].diff()
+    delta = stock_df['Close'].diff().astype(float)
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
