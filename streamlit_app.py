@@ -27,6 +27,53 @@ except LookupError:
 
 TARGET_MAPPING = {1: "Up", -1: "Down", 0: "Neutral", 2: "Up"}
 
+# A helper function to validate and process news data
+def validate_and_process_news(news_df):
+    """
+    Validates that the news DataFrame is properly structured and processes it if needed.
+    Returns a tuple of (is_valid, processed_df, summary_dict).
+    """
+    # Default return values
+    is_valid = False
+    summary = {
+        'Avg_News_Sentiment': 0,
+        'News_Count': 0,
+        'Positive_News_Count': 0,
+        'Negative_News_Count': 0
+    }
+    
+    # Basic checks
+    if news_df is None or isinstance(news_df, bool) or not isinstance(news_df, pd.DataFrame):
+        return False, None, summary
+    
+    if news_df.empty:
+        return False, news_df, summary
+    
+    # Check for required columns
+    required_columns = ['title', 'description']
+    if not all(col in news_df.columns for col in required_columns):
+        return False, news_df, summary
+    
+    # Process the news data if sentiment not already calculated
+    if 'sentiment_compound' not in news_df.columns:
+        try:
+            analyzer = SentimentIntensityAnalyzer()
+            news_df['text'] = news_df['title'].fillna('') + ' ' + news_df['description'].fillna('')
+            news_df['sentiment_compound'] = news_df['text'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
+        except Exception as e:
+            print(f"Error calculating sentiment: {e}")
+            return False, news_df, summary
+    
+    # Calculate summary
+    summary = {
+        'Avg_News_Sentiment': news_df['sentiment_compound'].mean(),
+        'News_Count': len(news_df),
+        'Positive_News_Count': (news_df['sentiment_compound'] > 0.05).sum(),
+        'Negative_News_Count': (news_df['sentiment_compound'] < -0.05).sum()
+    }
+    
+    return True, news_df, summary
+
 def generate_advice(prediction_direction):
     # Convert NumPy integer types to standard Python int
     if isinstance(prediction_direction, np.number):
@@ -374,26 +421,38 @@ if 'predict_button' in locals() and predict_button:
                 top_features = None
 
             # Access the current_news_summary and latest_news_df from function
-            current_news_summary = {}
+            latest_news_df = None
+            
             try:
-                # Get latest news data for display
-                days_to_fetch = 7 if ticker_input == "GOOGL" else 2  # Use a longer window for Google
-                latest_news_df = get_news_data(ticker=ticker_input, days_ago=days_to_fetch, 
-                                               output_path=f"data/{ticker_input.lower()}_latest_news.csv", 
-                                               strict_filtering=True)
-                if latest_news_df is not None and not latest_news_df.empty:
-                    analyzer = SentimentIntensityAnalyzer()
-                    latest_news_df['text'] = latest_news_df['title'].fillna('') + ' ' + latest_news_df['description'].fillna('')
-                    latest_news_df['sentiment_compound'] = latest_news_df['text'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
-
-                    current_news_summary = {
-                        'Avg_News_Sentiment': latest_news_df['sentiment_compound'].mean() if not latest_news_df.empty else 0,
-                        'News_Count': len(latest_news_df),
-                        'Positive_News_Count': (latest_news_df['sentiment_compound'] > 0.05).sum(),
-                        'Negative_News_Count': (latest_news_df['sentiment_compound'] < -0.05).sum()
-                    }
+                # Try to load existing news data first
+                news_file_path = f"data/{ticker_input.lower()}_latest_news.csv"
+                news_recent_path = f"data/{ticker_input.lower()}_recent_news.csv"
+                
+                if os.path.exists(news_file_path):
+                    latest_news_df = pd.read_csv(news_file_path)
+                    st.success(f"Loaded existing news data for {ticker_input}")
+                elif os.path.exists(news_recent_path):
+                    latest_news_df = pd.read_csv(news_recent_path)
+                    st.success(f"Loaded recent news data for {ticker_input}")
+                else:
+                    # If no existing data, try to fetch from API
+                    days_to_fetch = 7 if ticker_input == "GOOGL" else 2  # Use a longer window for Google
+                    latest_news_df = get_news_data(ticker=ticker_input, days_ago=days_to_fetch, 
+                                                output_path=f"data/{ticker_input.lower()}_latest_news.csv", 
+                                                strict_filtering=True)
+                
+                # Validate and process the news data
+                has_valid_news, latest_news_df, current_news_summary = validate_and_process_news(latest_news_df)
+                
+                if has_valid_news:
+                    st.success(f"Processed {current_news_summary['News_Count']} news articles for {ticker_input}")
+                else:
+                    st.warning(f"No valid news data available for {ticker_input}. Using technical indicators only for prediction.")
+                    
             except Exception as e:
-                st.error(f"Error fetching news data: {e}")
+                st.error(f"Error processing news data: {e}")
+                _, _, current_news_summary = validate_and_process_news(None)
+                st.warning("Using default sentiment values due to error.")
 
         if pred_direction is not None:
             # Create a dashboard-like layout for the prediction results
@@ -463,7 +522,13 @@ if 'predict_button' in locals() and predict_button:
                 # News sentiment visualization
                 st.markdown("### News Sentiment Analysis")
                 
-                if current_news_summary and current_news_summary.get('News_Count', 0) > 0:
+                # Check if news data exists and has been properly loaded
+                has_news = (isinstance(current_news_summary, dict) and 
+                           'News_Count' in current_news_summary and 
+                           current_news_summary['News_Count'] > 0 and
+                           'Avg_News_Sentiment' in current_news_summary)
+                
+                if has_news:
                     # Create a gauge chart for sentiment with improved colors
                     sentiment = current_news_summary['Avg_News_Sentiment']
                     
@@ -492,8 +557,8 @@ if 'predict_button' in locals() and predict_button:
                     fig.update_layout(height=250)
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # News statistics
-                    #st.markdown(f"**Article Count**: {current_news_summary['News_Count']}")
+                    # News statistics with count displayed
+                    st.markdown(f"**Articles analyzed**: {current_news_summary['News_Count']}")
                     
                     # Pie chart of positive vs negative news
                     pos = current_news_summary['Positive_News_Count']
@@ -516,30 +581,54 @@ if 'predict_button' in locals() and predict_button:
                     pie_fig.update_layout(height=250)
                     st.plotly_chart(pie_fig, use_container_width=True)
                 else:
-                    st.info("No news data available for sentiment analysis.")
+                    st.warning("No news data available for sentiment analysis. Using technical indicators only for prediction.")
                 
             # Display news articles in an expandable section
             with st.expander("📰 Top News Articles"):
-                if 'latest_news_df' in locals() and latest_news_df is not None and not latest_news_df.empty:
-                    for i, (_, row) in enumerate(latest_news_df.head(5).iterrows()):
+                # Use our validation function to check for valid news data
+                has_valid_news, news_df, _ = validate_and_process_news(latest_news_df)
+                
+                if has_valid_news and news_df is not None and len(news_df) > 0:
+                    # Show how many articles we found
+                    article_count = len(news_df)
+                    st.markdown(f"**Found {article_count} recent articles related to {ticker_input}**")
+                    
+                    # Display up to 5 articles
+                    display_count = min(5, article_count)
+                    for i, (_, row) in enumerate(news_df.head(display_count).iterrows()):
                         sentiment = row['sentiment_compound']
                         sentiment_label = "Positive" if sentiment > 0.05 else "Negative" if sentiment < -0.05 else "Neutral"
+                        
                         # Improved color scheme with better contrast
                         border_color = "#28a745" if sentiment > 0.05 else "#dc3545" if sentiment < -0.05 else "#17a2b8"
                         bg_color = "#f0fff0" if sentiment > 0.05 else "#fff0f0" if sentiment < -0.05 else "#f0f8ff"
                         text_color = "#0d6b1c" if sentiment > 0.05 else "#8b0000" if sentiment < -0.05 else "#0d557a"
                         
+                        # Get title and description, ensure they're not None
+                        title = str(row['title']) if not pd.isna(row['title']) else "No title available"
+                        description = str(row['description']) if not pd.isna(row['description']) else "No description available"
+                        
+                        # Build the article card
                         st.markdown(f"""
                         <div style="padding: 15px; margin-bottom: 15px; border-left: 5px solid {border_color}; background-color: {bg_color}; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <h4 style="color: {text_color}; margin-top: 0;">{row['title']}</h4>
-                            <p style="color: #333;">{row['description']}</p>
+                            <h4 style="color: {text_color}; margin-top: 0;">{title}</h4>
+                            <p style="color: #333;">{description}</p>
                             <p style="text-align: right; font-style: italic; color: {text_color}; margin-bottom: 0;">
                                 Sentiment: <strong>{sentiment_label}</strong> ({sentiment:.2f})
                             </p>
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.write("No relevant news articles found.")
+                    st.warning("""
+                    No relevant news articles found for this ticker.
+                    
+                    Possible reasons:
+                    - News API rate limits or connection issues
+                    - No recent news about this stock
+                    - Strict filtering removed all articles
+                    
+                    Note: The model will still generate predictions using technical indicators.
+                    """)
         else:
             st.error("Could not complete prediction. Please check logs for details or try again later.")
             st.write("Possible reasons: NewsAPI.org rate limit, no recent news, or data fetching issues.")
@@ -666,3 +755,4 @@ def check_detailed_ticker_availability(tickers_list):
         available_tickers[ticker] = has_price_data and has_news_data
     
     return available_tickers
+
