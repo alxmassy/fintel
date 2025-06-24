@@ -14,7 +14,11 @@ from dotenv import load_dotenv
 from src.data_acquisition import get_stock_data, get_news_data
 from src.feature_engineering import create_features_and_target
 
-load_dotenv()
+# Load environment variables if .env file exists
+try:
+    load_dotenv()
+except Exception:
+    st.warning("No .env file found. Using default configuration.")
 
 try:
     nltk.data.find('sentiment/vader_lexicon.zip')

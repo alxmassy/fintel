@@ -31,3 +31,47 @@ Fintel is a proof-of-concept machine learning system designed to predict short-t
     *   The SHAP advice model is currently being implemented.
 5.  **Web GUI**: Streamlit hosts an interactive interface that allows users to input a stock ticker (currently fixed to AAPL in the backend logic for this prototype) and view the prediction and advice.
 
+## Deployment Instructions
+
+### Deploy on Streamlit Cloud (Recommended)
+
+1. **Prerequisites**: 
+   - A GitHub account
+   - Your code pushed to a GitHub repository
+   - The repository must include all the files in this project (including data and model files for the prototype)
+
+2. **Steps to Deploy**:
+   1. Go to [Streamlit Cloud](https://streamlit.io/cloud)
+   2. Sign in with your GitHub account
+   3. Click "New app"
+   4. Select your repository, branch, and streamlit_app.py as the main file
+   5. Click "Deploy!"
+
+### Local Deployment
+
+If you prefer to run the app locally:
+
+1. Clone the repository
+2. Install the requirements:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Run the Streamlit app:
+   ```bash
+   streamlit run streamlit_app.py
+   ```
+
+### Notes for Production Deployment
+
+This is a prototype deployment. For a production deployment, you would need to:
+- Set up scheduled data updates
+- Use a more robust API key management system
+- Implement a backend database
+- Add user authentication
+- Deploy with proper security measures
+
+## Environment Variables
+
+The app uses the following environment variables (optional for prototype):
+- `NEWS_API_KEY`: Your NewsAPI.org API key for fetching news data
+
