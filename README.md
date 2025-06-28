@@ -11,6 +11,8 @@ Fintel is a proof-of-concept machine learning system designed to predict short-t
 *   **Machine Learning Prediction**: Employs an XGBoost Classifier to predict the next day's stock movement direction (Up, Down, Neutral).
 *   **Web-Based GUI**: A simple, intuitive graphical user interface built with Streamlit for easy interaction and demonstration.
 
+## Click for Video Demo 
+[![Watch the Demo](https://img.youtube.com/vi/FTjgbdYyV84/hqdefault.jpg)](https://www.youtube.com/watch?v=6gytpbiClyE)
 ## How it Works (Under the Hood)
 
 1.  **Data Acquisition**:
